@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Motor cohete de propulsión líquida H₂/O₂</title>
+<style>
+:root{--bg:#f3f5f8;--fg:#121821;--mut:#5a6577;--card:#fff;--bd:#d6dbe4;--ac:#0a74c4;--acf:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1117;--fg:#e8edf4;--mut:#9aa7ba;--card:#161c26;--bd:#2a3342;--ac:#4cc2ff;--acf:#04121d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d1117;--fg:#e8edf4;--mut:#9aa7ba;--card:#161c26;--bd:#2a3342;--ac:#4cc2ff;--acf:#04121d;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:12px}
+h1{font-size:clamp(17px,3.4vw,24px);margin:4px 0 10px;line-height:1.2}
+h1 small{display:block;font-weight:400;color:var(--mut);font-size:.6em;margin-top:2px}
+.stage{background:#070b12;border-radius:12px;overflow:hidden;border:1px solid var(--bd)}
+canvas{display:block;width:100%}
+.steps,.ctl{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;align-items:flex-end}
+button{font:inherit;font-size:13px;padding:8px 11px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button.on,button.pri{background:var(--ac);color:var(--acf);border-color:var(--ac);font-weight:600}
+.info{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;min-height:6.2em}
+.info b{color:var(--ac)}.info p{margin:4px 0 0}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:6px;margin:10px 0}
+.kpi div{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:6px 10px}
+.kpi span{display:block;font-size:11px;color:var(--mut)}
+.kpi b{font-size:17px;font-variant-numeric:tabular-nums}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);min-width:150px;flex:1}
+input[type=range]{width:100%;accent-color:var(--ac)}
+.hint{font-size:12px;color:var(--mut)}
+#rot{display:none;color:var(--mut);font-size:12px;margin:6px 0 0}
+@media(orientation:portrait) and (max-width:700px){#rot{display:block}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Motor cohete de propulsión líquida<small>Hidrógeno y oxígeno líquidos: de los tanques a los inyectores coaxiales</small></h1>
+<div class="stage"><canvas id="c"></canvas></div>
+<p id="rot">Gira el dispositivo en horizontal para ver mejor el esquema.</p>
+<div class="steps" id="steps"></div>
+<div class="info"><b id="it"></b><p id="ix"></p></div>
+<div class="kpi">
+<div><span>Estado</span><b id="kS">Apagado</b></div>
+<div><span>Empuje (kN)</span><b id="kF">0</b></div>
+<div><span>Presión cámara (MPa)</span><b id="kP">0</b></div>
+<div><span>Flujo H₂ (kg/s)</span><b id="kH">0</b></div>
+<div><span>Flujo O₂ (kg/s)</span><b id="kO">0</b></div>
+<div><span>Isp (s)</span><b id="kI">—</b></div>
+<div><span>Temp. cámara (K)</span><b id="kT">—</b></div>
+</div>
+<div class="ctl">
+<button id="bGo" class="pri">▶ Ignición</button>
+<button id="bTour">Recorrido guiado</button>
+<button id="bDet" class="on">Detalle del inyector</button>
+<button id="bFill">Rellenar tanques</button>
+<label>Empuje: <span id="oT">100 %</span><input type="range" id="rT" min="20" max="100" value="100"></label>
+<label>Relación O/F: <span id="oM">6,0</span><input type="range" id="rM" min="40" max="80" value="60"></label>
+</div>
+<p class="hint">Valores ilustrativos, del orden de un motor tipo RS-25. Atajos: espacio = ignición · 0 a 6 = etapas.</p>
+</div>
+<script>
+(()=>{
+const $=id=>document.getElementById(id),W=1000,H=560,AY=280;
+const cv=$('c'),ctx=cv.getContext('2d');let S=1;
+function fit(){const w=cv.parentNode.clientWidth,d=Math.min(window.devicePixelRatio||1,2);cv.width=w*d;cv.height=w*H/W*d;cv.style.height=w*H/W+'px';S=cv.width/W}
+addEventListener('resize',fit);fit();
+const st={on:false,flow:0,fl:0,thr:1,mr:6,lH:1,lO:1,step:0,det:true,t:0,rot:0,empty:false};
+const sm=u=>u*u*(3-2*u),cl=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),mx=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+const hh=x=>x<=760?70:x<=800?70-48*sm((x-760)/40):x<=900?22+73*(1-Math.pow(1-(x-800)/100,1.6)):95+(x-900)*.5;
+const nf=(v,d=0)=>v.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+/* trayectorias */
+function mk(p,t){const c=[0];for(let i=1;i<p.length;i++)c.push(c[i-1]+Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]));return{p,c,L:c[c.length-1],t}}
+function at(P,d){let i=1;while(i<P.c.length-1&&P.c[i]<d)i++;const a=P.p[i-1],b=P.p[i],u=(d-P.c[i-1])/((P.c[i]-P.c[i-1])||1);return[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u]}
+const ys=[224,252,280,308,336],jac=[];
+for(let x=900;x>=600;x-=25)jac.push([x,AY-hh(x)-8]);
+const hP=[],oP=[],H2FEED=[[230,110],[925,110],[925,177],[900,177]],O2FEED=[[170,440],[520,440],[520,280],[547,280]];
+ys.forEach(y=>{oP.push(mk([...O2FEED,[547,y],[650,y]],1));[-8,8].forEach(s=>hP.push(mk([[230,110],[925,110],[925,177],...jac,[578,202],[578,y+s],[650,y+s]],0)))});
+const jS=hP[0].c[3],jE=hP[0].c[3+jac.length-1];
+const pp=[],pr=[],ip=[];
+/* texto */
+const STEPS=[
+['General','Los propelentes salen de los tanques, las turbobombas los presurizan, el H₂ enfría la tobera y ambos entran por los inyectores coaxiales a la cámara, donde arden y se aceleran por la tobera.'],
+['Tanques','El hidrógeno líquido (LH₂, ~20 K) y el oxígeno líquido (LOX, ~90 K) se guardan por separado. El LH₂ es muy poco denso: su tanque es mucho mayor aunque transporte menos masa (O/F ≈ 6).'],
+['Turbobombas','Elevan la presión de los líquidos desde pocos bar hasta cientos de bar, para vencer la presión de la cámara (~200 bar) y las pérdidas del circuito. Las válvulas principales abren y cierran el flujo.'],
+['Enfriamiento','El H₂ frío recorre la pared de la tobera y la cámara (enfriamiento regenerativo). Absorbe calor, se gasifica y protege el metal de unos 3 500 K; su color pasa de azul a cálido.'],
+['Inyectores','Cada elemento coaxial lleva O₂ por el poste central y H₂ caliente por el anillo exterior. El H₂, más veloz, cizalla el chorro de O₂, lo atomiza y acelera la mezcla.'],
+['Combustión','H₂ + ½ O₂ → H₂O. La mezcla arde a ~3 500 K y ~200 bar. Se usa exceso de H₂ (O/F ≈ 6, frente a 8 estequiométrico) para obtener gases ligeros y mayor impulso específico.'],
+['Tobera','En la garganta el flujo alcanza Mach 1; la parte divergente lo acelera a ~4,4 km/s. Así el calor se convierte en empuje: F = ṁ·Ve + (Pe − Pa)·Ae.']
+];
+const HL=[[],[[20,20,220,180],[20,375,160,130]],[[244,80,118,60],[244,410,118,60]],[[590,98,350,120]],[[532,190,86,180],[254,164,232,222]],[[600,205,205,150]],[[800,170,200,240]]];
+const chips=['General','1 Tanques','2 Turbobombas','3 Enfriamiento','4 Inyectores','5 Combustión','6 Tobera'];
+chips.forEach((c,i)=>{const b=document.createElement('button');b.textContent=c;b.onclick=()=>{stopTour();setStep(i)};$('steps').appendChild(b)});
+function setStep(i){st.step=i;[...$('steps').children].forEach((b,j)=>b.classList.toggle('on',j===i));$('it').textContent=STEPS[i][0];$('ix').textContent=STEPS[i][1]}
+setStep(0);
+let ti=null;
+function stopTour(){if(ti){clearInterval(ti);ti=null;$('bTour').textContent='Recorrido guiado'}}
+$('bTour').onclick=()=>{if(ti){stopTour();return}if(!st.on)go();setStep(1);$('bTour').textContent='Detener recorrido';ti=setInterval(()=>setStep(st.step%6+1),7000)};
+function go(){if(st.on){st.on=false}else if(st.lH<.02||st.lO<.02){st.empty=true;return}else{st.empty=false;st.on=true}$('bGo').textContent=st.on?'■ Apagar':'▶ Ignición'}
+$('bGo').onclick=go;
+$('bFill').onclick=()=>{if(st.on)go();st.lH=st.lO=1;st.empty=false};
+$('bDet').onclick=e=>{st.det=!st.det;e.target.classList.toggle('on',st.det)};
+$('rT').oninput=e=>{st.thr=e.target.value/100;$('oT').textContent=e.target.value+' %'};
+$('rM').oninput=e=>{st.mr=e.target.value/10;$('oM').textContent=nf(st.mr,1)};
+addEventListener('keydown',e=>{if(/BUTTON|INPUT/.test(e.target.tagName))return;if(e.key===' '){e.preventDefault();go()}else if(/^[0-6]$/.test(e.key)){stopTour();setStep(+e.key)}});
+/* simulación */
+const vx=x=>x<760?70+(x-600)*.25:x<800?110+(x-760)*5:x<900?310+(x-800)*5.4:850+(x-900);
+let ah=0,ao=0,pa=0,i1=0,i2=0;
+function upd(dt){
+const s=st;s.t+=dt;
+s.flow+=((s.on?1:0)-s.flow)*Math.min(1,dt*(s.on?1:2.5));
+if(!s.on&&s.flow<.01){s.flow=0;pp.length=0;ip.length=0}
+const ft=s.on&&s.flow>.3?1:0;s.fl+=(ft-s.fl)*Math.min(1,dt*(ft?5:3));if(!ft&&s.fl<.01)s.fl=0;
+s.rot+=dt*s.flow*(8+12*s.thr);
+if(s.flow>.02){const r=s.flow*s.thr*dt/120;s.lH=Math.max(0,s.lH-r*7/(1+s.mr));s.lO=Math.max(0,s.lO-r*s.mr*7/(6*(1+s.mr)));if(s.lH<=0||s.lO<=0){s.on=false;s.empty=true;$('bGo').textContent='▶ Ignición'}}
+const k=(.45+.55*s.thr)*s.flow,j=()=>.9+Math.random()*.2;
+if(s.on){ah+=230*k/7*dt;ao+=230*k/7*dt;
+while(ah>=1){ah--;pp.push({P:hP[Math.random()*hP.length|0],d:0,j:j()})}
+while(ao>=1){ao--;pp.push({P:oP[Math.random()*oP.length|0],d:0,j:j()})}
+i1+=70*k/6*dt;i2+=150*k/3*dt;
+while(i1>=1){i1--;ip.push({x:272,y:290+(Math.random()-.5)*20,v:70*j(),o:1})}
+while(i2>=1){i2--;ip.push({x:272,y:290+(Math.random()<.5?-1:1)*(18+Math.random()*13),v:150*j(),o:0})}}
+for(let i=pp.length-1;i>=0;i--){const p=pp[i];p.d+=230*k*p.j*(p.d>p.P.L-120?1.5:1)*dt;if(p.d>=p.P.L)pp.splice(i,1)}
+for(let i=ip.length-1;i>=0;i--){const p=ip[i];p.x+=p.v*(.5+.5*s.thr)*s.flow*dt;if(p.x>392){const u=Math.min(1,(p.x-392)/70);p.y+=(290-p.y)*(p.o?.9:2.5)*dt*u}if(p.x>476)ip.splice(i,1)}
+if(s.fl>.02){pa+=300*s.fl*(.4+.6*s.thr)*dt;while(pa>=1){pa--;pr.push({x:612+Math.random()*30,s:(Math.random()*2-1)*.92})}}
+for(let i=pr.length-1;i>=0;i--){const p=pr[i];p.x+=vx(p.x)*dt*(.55+.45*s.thr);if(p.x>1000)pr.splice(i,1)}
+}
+/* dibujo */
+const fc=x=>x<720?[255,244,212]:x<830?mx([255,244,212],[255,150,50],(x-720)/110):x<920?mx([255,150,50],[150,180,255],(x-830)/90):[150,180,255];
+const rgb=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+function txt(t,x,y,col='#9fb0c8',al='center',f='12px system-ui,sans-serif'){ctx.font=f;ctx.fillStyle=col;ctx.textAlign=al;ctx.fillText(t,x,y)}
+function pipe(pts,col){ctx.lineJoin='round';ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.lineWidth=13;ctx.strokeStyle='#5b6578';ctx.stroke();ctx.lineWidth=9;ctx.strokeStyle='#0c121c';ctx.stroke();ctx.strokeStyle=col;ctx.globalAlpha=.16*Math.min(1,st.flow*2);ctx.stroke();ctx.globalAlpha=1}
+function band(sg,fill){ctx.beginPath();for(let x=600;x<=900;x+=5)ctx.lineTo(x,AY+sg*hh(x));for(let x=900;x>=600;x-=5)ctx.lineTo(x,AY+sg*(hh(x)+16));ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle='#6b7690';ctx.lineWidth=1.5;ctx.stroke()}
+function glow(){const a=st.fl;if(a<.01)return;ctx.save();ctx.beginPath();for(let x=604;x<=1000;x+=4)ctx.lineTo(x,AY-hh(x));for(let x=1000;x>=604;x-=4)ctx.lineTo(x,AY+hh(x));ctx.closePath();ctx.clip();
+const g=ctx.createLinearGradient(604,0,1000,0),k=a*(.45+.4*st.thr);
+g.addColorStop(0,rgb([255,245,215],.7*k));g.addColorStop(.35,rgb([255,170,70],.55*k));g.addColorStop(.65,rgb([255,110,50],.3*k));g.addColorStop(.85,rgb([130,160,255],.2*k));g.addColorStop(1,rgb([130,160,255],0));
+ctx.fillStyle=g;ctx.fillRect(604,0,400,H);ctx.restore()}
+function head(){
+ctx.fillStyle='#1b2230';ctx.fillRect(536,194,70,172);ctx.strokeStyle='#6b7690';ctx.lineWidth=1.5;ctx.strokeRect(536,194,70,172);
+ctx.fillStyle='#0d2230';ctx.fillRect(556,200,40,160);ctx.fillStyle='#1c1233';ctx.fillRect(541,214,15,132);
+ctx.fillStyle='rgba(34,211,238,.12)';ctx.fillRect(556,200,40,160);ctx.fillStyle='rgba(192,132,252,.18)';ctx.fillRect(541,214,15,132);
+ys.forEach(y=>{ctx.fillStyle='#7b869b';ctx.fillRect(556,y-6,48,12);ctx.fillStyle='#2b1a4f';ctx.fillRect(556,y-4,48,8)});
+ctx.fillStyle='#7b869b';let a=194;ys.forEach(y=>{ctx.fillRect(598,a,8,y-10-a);a=y+10});ctx.fillRect(598,a,8,366-a);
+}
+function tank(x,y,w,h,lv,col,lab){
+ctx.save();ctx.beginPath();ctx.roundRect(x,y,w,h,22);ctx.fillStyle='#0b121c';ctx.fill();ctx.clip();
+const top=y+h*(1-lv);ctx.beginPath();ctx.moveTo(x,y+h);for(let i=0;i<=w;i+=6)ctx.lineTo(x+i,top+Math.sin(i*.07+st.t*2)*2);ctx.lineTo(x+w,y+h);ctx.closePath();ctx.fillStyle=col;ctx.fill();ctx.restore();
+ctx.beginPath();ctx.roundRect(x,y,w,h,22);ctx.lineWidth=3;ctx.strokeStyle='#8a94a6';ctx.stroke();
+txt(lab,x+w/2,y+28,'#f1f5f9','center','bold 15px system-ui,sans-serif');txt(Math.round(lv*100)+' %',x+w/2,y+h-14,'#f1f5f9','center','13px system-ui,sans-serif')}
+function pump(x,y,col){ctx.beginPath();ctx.arc(x,y,24,0,7);ctx.fillStyle='#141c2a';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#8a94a6';ctx.stroke();
+ctx.save();ctx.translate(x,y);ctx.rotate(st.rot);ctx.strokeStyle=col;ctx.lineWidth=4;ctx.lineCap='round';for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.moveTo(4,0);ctx.lineTo(18,-5);ctx.stroke()}ctx.restore()}
+function valve(x,y){ctx.fillStyle=st.on?'#34d399':'#ef4444';ctx.beginPath();ctx.moveTo(x-10,y-9);ctx.lineTo(x+10,y+9);ctx.lineTo(x+10,y-9);ctx.lineTo(x-10,y+9);ctx.closePath();ctx.fill()}
+function inset(){
+const X=258,Y=168,w=224,h=214,cy=290,xp=392,R=X+w;
+ctx.fillStyle='rgba(8,13,22,.96)';ctx.beginPath();ctx.roundRect(X,Y,w,h,10);ctx.fill();ctx.strokeStyle='#3a4558';ctx.lineWidth=1.5;ctx.stroke();
+txt('Detalle: elemento coaxial',X+10,Y+17,'#cbd5e1','left','bold 11px system-ui,sans-serif');
+ctx.fillStyle='rgba(192,132,252,.14)';ctx.fillRect(X+8,cy-11,xp-X-8,22);
+ctx.fillStyle='rgba(34,211,238,.12)';ctx.fillRect(X+8,cy-33,xp-X-8,18);ctx.fillRect(X+8,cy+15,xp-X-8,18);
+if(st.fl>.01){const g=ctx.createLinearGradient(xp,0,R,0);g.addColorStop(0,rgb([255,240,200],.6*st.fl));g.addColorStop(1,rgb([255,110,40],0));ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(xp+4,cy-30);ctx.lineTo(R-4,cy-70);ctx.lineTo(R-4,cy+70);ctx.lineTo(xp+4,cy+30);ctx.fill()}
+ctx.fillStyle='#7b869b';
+for(const s of[-1,1]){const r=(a,b,x0,ww)=>ctx.fillRect(x0,Math.min(cy+s*a,cy+s*b),ww,b-a);r(11,15,X+8,xp-X-8);r(33,38,X+8,xp-X-8);r(33,90,xp-4,8)}
+for(const p of ip){const u=cl((p.x-392)/80),c=mx(p.o?[192,132,252]:[34,211,238],[255,150,60],u);ctx.fillStyle=rgb(c,.95);ctx.beginPath();ctx.arc(p.x,p.y,2,0,7);ctx.fill()}
+txt('O₂ líquido',X+12,cy+4,'#c084fc','left','10px system-ui,sans-serif');txt('H₂',X+12,cy-21,'#22d3ee','left','10px system-ui,sans-serif');txt('H₂',X+12,cy+27,'#22d3ee','left','10px system-ui,sans-serif');
+txt('plano del inyector',xp-8,Y+h-8,'#9fb0c8','right','10px system-ui,sans-serif');txt('Combustión',xp+10,Y+36,'#fdba74','left','10px system-ui,sans-serif')}
+function draw(){
+ctx.setTransform(S,0,0,S,0,0);ctx.fillStyle='#070b12';ctx.fillRect(0,0,W,H);
+if(st.det){ctx.setLineDash([4,4]);ctx.strokeStyle='rgba(148,163,184,.5)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(482,168);ctx.lineTo(550,266);ctx.moveTo(482,382);ctx.lineTo(550,294);ctx.stroke();ctx.strokeRect(550,266,62,28);ctx.setLineDash([])}
+glow();
+ctx.globalCompositeOperation='lighter';
+for(const p of pr){const x=p.x,y=AY+p.s*hh(x),a=x>900?.85*(1-(x-900)/110):.85;ctx.fillStyle=rgb(fc(x),a*.6);ctx.beginPath();ctx.arc(x,y,1.7+(x>900?(x-900)/45:0),0,7);ctx.fill()}
+ctx.globalCompositeOperation='source-over';
+band(-1,'#0f2a3a');band(1,'#2a3140');
+pipe(H2FEED,'#22d3ee');pipe(O2FEED,'#c084fc');
+head();
+for(const p of pp){const P=p.P,q=at(P,p.d),x=q[0],y=q[1];let c=P.t?[192,132,252]:mx([34,211,238],[255,214,150],cl((p.d-jS)/(jE-jS)));const t=cl((p.d-(P.L-46))/46);c=mx(c,[255,170,80],t);ctx.fillStyle=rgb(c,cl(st.flow*3)*(1-.7*t));ctx.beginPath();ctx.arc(x,y,2.1,0,7);ctx.fill()}
+tank(30,30,200,160,st.lH,'rgba(34,211,238,.5)','LH₂ · 20 K');tank(30,385,140,110,st.lO,'rgba(192,132,252,.5)','LOX · 90 K');
+valve(262,110);valve(262,440);pump(330,110,'#22d3ee');pump(330,440,'#c084fc');
+txt('Turbobomba H₂',330,150);txt('Turbobomba O₂',330,482);txt('Válvula',262,136,'#9fb0c8');txt('Válvula',262,466,'#9fb0c8');
+txt('Camisa de enfriamiento (H₂)',700,160);txt('Cabezal inyector',530,388,'#9fb0c8','left');txt('Cámara de combustión',705,392);
+ctx.strokeStyle='rgba(148,163,184,.5)';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(800,236);ctx.lineTo(800,140);ctx.stroke();ctx.setLineDash([]);
+txt('Garganta (Mach 1)',800,132);txt('Tobera divergente',850,414);txt('Escape ≈ 4,4 km/s →',995,470,'#9fb0c8','right');
+if(st.det)inset();
+const hl=HL[st.step];if(hl.length){ctx.setLineDash([7,4]);ctx.lineWidth=2;ctx.strokeStyle=`rgba(76,194,255,${.65+.35*Math.sin(st.t*4)})`;ctx.fillStyle='rgba(76,194,255,.07)';hl.forEach(r=>{if(r[0]>250&&r[0]<260&&!st.det)return;ctx.fillRect(...r);ctx.strokeRect(...r)});ctx.setLineDash([])}
+}
+function kpi(){const s=st,f=s.fl,m=500*s.thr*s.flow,mh=m/(1+s.mr),isp=452-9*Math.pow(s.mr-5.8,2);
+$('kS').textContent=s.empty&&!s.on?'Tanque vacío':s.on?(s.flow<.9?'Arranque':'Régimen'):(s.flow>.02?'Apagando':'Apagado');
+$('kF').textContent=nf(f*m*isp*9.81/1000);$('kP').textContent=nf(20.6*s.thr*s.flow*f,1);$('kH').textContent=nf(mh,1);$('kO').textContent=nf(m-mh,1);
+$('kI').textContent=f>.3?nf(isp):'—';$('kT').textContent=f>.3?nf(3450-40*Math.pow(s.mr-5.5,2)):'—'}
+let last=performance.now(),fr=0;
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;upd(dt);draw();if(++fr%6===0)kpi();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
