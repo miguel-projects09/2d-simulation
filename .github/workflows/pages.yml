@@ -27,6 +27,8 @@ jobs:
         run: |
           mkdir _site
           cp "2D ROCKET.html" _site/index.html
+          cp "2D ROCKET.html" _site/2d.html
+          cp "3D ROCKET.html" _site/3d.html
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
