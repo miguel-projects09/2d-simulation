@@ -1,13 +1,17 @@
 # 2d-simulation
 
-Open [2D ROCKET.html](2D%20ROCKET.html) in a modern browser to run the interactive, Spanish-language rocket-engine illustration. Use the controls to ignite the engine, adjust thrust and mixture, and explore the guided walkthrough.
+Open [2D ROCKET.html](2D%20ROCKET.html) or [3D ROCKET.html](3D%20ROCKET.html) in a modern browser to run the interactive, Spanish-language rocket-engine illustrations. The 3D model loads Three.js from a CDN and requires an internet connection.
 
 The displayed engine values and behavior are illustrative, not an engineering model.
 
 ## Publicar en GitHub Pages
 
-Antes de publicar por primera vez, un administrador del repositorio debe habilitar Pages manualmente: abre **Settings → Pages** y, en **Build and deployment**, selecciona **GitHub Actions** como origen. El flujo publica el simulador al ejecutarse en `main`; no intenta cambiar la configuración de Pages ni necesita permisos de administrador. Cuando termine **Deploy GitHub Pages**, el sitio estará disponible en:
+El flujo publica ambas versiones al ejecutarse en `main`. Para publicar por primera vez, un administrador del repositorio debe seleccionar **GitHub Actions** en **Settings → Pages → Build and deployment**.
 
-https://miguel-projects09.github.io/2d-simulation/
+Una vez desplegadas, las páginas son:
 
-En Canva, añade esa dirección como enlace o incrústala si el tipo de diseño lo permite.
+- [Simulador 2D](https://miguel-projects09.github.io/2d-simulation/)
+- [Simulador 2D para incrustar](https://miguel-projects09.github.io/2d-simulation/2d.html?embed=1)
+- [Simulador 3D](https://miguel-projects09.github.io/2d-simulation/3d.html)
+
+Para incrustar el 2D en Canva, abre **Apps → Insertar (Embed)** y pega la dirección de **Simulador 2D para incrustar**. Esta vista está optimizada para el marco de la presentación y oculta el texto y el recorrido guiado. También puedes usar esa dirección como enlace normal.

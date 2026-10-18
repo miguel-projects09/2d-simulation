@@ -30,6 +30,15 @@ input[type=range]{width:100%;accent-color:var(--ac)}
 .hint{font-size:12px;color:var(--mut)}
 #rot{display:none;color:var(--mut);font-size:12px;margin:6px 0 0}
 @media(orientation:portrait) and (max-width:700px){#rot{display:block}}
+.embed-mode,.embed-mode body{height:100%;overflow:hidden}
+.embed-mode body{margin:0}
+.embed-mode .wrap{box-sizing:border-box;width:100%;height:100dvh;max-width:none;margin:0;padding:0;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:0}
+.embed-mode h1,.embed-mode #rot,.embed-mode .steps,.embed-mode .info,.embed-mode .hint{display:none}
+.embed-mode .stage{place-self:center;width:min(100vw,calc((100dvh - 58px)*1000/560));height:min(56vw,calc(100dvh - 58px));min-height:0;border-radius:0;border:0}
+.embed-mode .ctl{box-sizing:border-box;flex-wrap:nowrap;overflow-x:auto;gap:4px;margin:0;padding:4px;background:var(--card);border-top:1px solid var(--bd)}
+.embed-mode button{flex:0 0 auto;padding:5px 8px;font-size:12px}
+.embed-mode #bTour{display:none}
+.embed-mode label{min-width:90px;flex:1 1 110px}
 </style>
 </head>
 <body>
@@ -60,9 +69,11 @@ input[type=range]{width:100%;accent-color:var(--ac)}
 </div>
 <script>
 (()=>{
+const embedded=new URLSearchParams(location.search).get('embed')==='1';
+if(embedded)document.documentElement.classList.add('embed-mode');
 const $=id=>document.getElementById(id),W=1000,H=560,AY=280;
 const cv=$('c'),ctx=cv.getContext('2d');let S=1;
-function fit(){const w=cv.parentNode.clientWidth,d=Math.min(window.devicePixelRatio||1,2);cv.width=w*d;cv.height=w*H/W*d;cv.style.height=w*H/W+'px';S=cv.width/W}
+function fit(){const w=cv.parentNode.clientWidth,h=embedded?cv.parentNode.clientHeight:w*H/W;if(!w||!h)return;const d=Math.min(window.devicePixelRatio||1,2);cv.width=w*d;cv.height=h*d;cv.style.height=h+'px';S=cv.width/W}
 addEventListener('resize',fit);fit();
 const st={on:false,flow:0,fl:0,thr:1,mr:6,lH:1,lO:1,step:0,det:true,t:0,rot:0,empty:false};
 const sm=u=>u*u*(3-2*u),cl=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),mx=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);

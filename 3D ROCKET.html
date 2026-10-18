@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Motor cohete H₂/O₂ en 3D con corte de sección</title>
+<style>
+:root{--bg:#f3f5f8;--fg:#121821;--mut:#5a6577;--card:#fff;--bd:#d6dbe4;--ac:#0a74c4;--acf:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1117;--fg:#e8edf4;--mut:#9aa7ba;--card:#161c26;--bd:#2a3342;--ac:#4cc2ff;--acf:#04121d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d1117;--fg:#e8edf4;--mut:#9aa7ba;--card:#161c26;--bd:#2a3342;--ac:#4cc2ff;--acf:#04121d;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:12px}
+h1{font-size:clamp(17px,3.4vw,24px);margin:4px 0 10px;line-height:1.2}
+h1 small{display:block;font-weight:400;color:var(--mut);font-size:.6em;margin-top:2px}
+.stage{position:relative;height:min(76vh,700px);min-height:380px;background:radial-gradient(ellipse at 50% 40%,#10192a,#05080d);border-radius:12px;overflow:hidden;border:1px solid var(--bd)}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.lb{position:absolute;left:0;top:0;font:11px system-ui,sans-serif;color:#cbd5e1;background:rgba(8,13,22,.72);padding:1px 6px;border-radius:6px;white-space:nowrap;pointer-events:none}
+.row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;align-items:flex-end}
+.row h2{font-size:13px;margin:0;color:var(--mut);font-weight:600;flex-basis:100%}
+button{font:inherit;font-size:13px;padding:8px 11px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+button.on,button.pri{background:var(--ac);color:var(--acf);border-color:var(--ac);font-weight:600}
+.info{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;min-height:6.2em}
+.info b{color:var(--ac)}.info p{margin:4px 0 0}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:6px;margin:10px 0}
+.kpi div{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:6px 10px}
+.kpi span{display:block;font-size:11px;color:var(--mut)}
+.kpi b{font-size:17px;font-variant-numeric:tabular-nums}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);min-width:150px;flex:1}
+input[type=range]{width:100%;accent-color:var(--ac)}
+.hint{font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Motor cohete H₂/O₂ en 3D<small>Gira, acerca y corta el motor para ver el flujo por dentro</small></h1>
+<div class="stage" id="stg"><canvas id="c"></canvas><div id="lbs"></div></div>
+<div class="row" id="views"></div>
+<div class="info"><b id="it">Vista libre</b><p id="ix"></p></div>
+<div class="kpi">
+<div><span>Estado</span><b id="kS">Apagado</b></div>
+<div><span>Empuje (kN)</span><b id="kF">0</b></div>
+<div><span>Presión cámara (MPa)</span><b id="kP">0</b></div>
+<div><span>Temp. cámara (K)</span><b id="kT">—</b></div>
+</div>
+<div class="row">
+<h2>Corte de sección</h2>
+<span class="row" id="seg" style="margin:0"><button class="on">Sin corte</button><button>Longitudinal</button><button>Transversal</button></span>
+<label>Posición del plano<input type="range" id="rC" min="-1.8" max="1.8" step=".02" value="0" disabled></label>
+<button id="bFlip">Invertir lado</button>
+</div>
+<div class="row">
+<button id="bGo" class="pri">▶ Ignición</button>
+<button id="bAuto" class="on">Rotación</button>
+<button id="bLb" class="on">Etiquetas</button>
+<button id="bTk" class="on">Tanques</button>
+<button id="bFill">Rellenar</button>
+<label>Empuje: <span id="oT">100 %</span><input type="range" id="rT" min="20" max="100" value="100"></label>
+</div>
+<p class="hint">Arrastra para girar · pellizca o usa la rueda para acercar · espacio = ignición. Las zonas naranjas son material cortado. Valores ilustrativos tipo RS-25.</p>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+if(!window.THREE){document.querySelector('.stage').innerHTML='<p style="color:#cbd5e1;padding:20px">No se pudo cargar three.js. Abre la página con conexión a internet.</p>';return}
+const T=THREE,cv=$('c'),stg=$('stg');
+const cl=(v,a=0,b=1)=>Math.min(b,Math.max(a,v)),sm=u=>u*u*(3-2*u),mx=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t),nf=(v,d=0)=>v.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d});
+const ren=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:true});ren.localClippingEnabled=true;ren.setPixelRatio(Math.min(devicePixelRatio||1,2));
+const scene=new T.Scene(),cam=new T.PerspectiveCamera(40,1,.1,200);
+scene.add(new T.HemisphereLight(0xcfe4ff,0x223044,.95));
+const d1=new T.DirectionalLight(0xffffff,.9);d1.position.set(5,8,10);scene.add(d1);
+const d2=new T.DirectionalLight(0x88aaff,.45);d2.position.set(-8,-3,-6);scene.add(d2);
+const plane=new T.Plane(new T.Vector3(0,0,-1),1e5),clip=[plane];
+const eng=new T.Group(),tk=new T.Group();scene.add(eng,tk);
+/* geometría base */
+const R=y=>y>=-3?1:y>=-4.2?1-.62*sm((-3-y)/1.2):y>=-8?.38+1.32*(1-Math.pow(1-(-4.2-y)/3.8,1.6)):1.7+(-8-y)*.2;
+const Rr=y=>y>=-8?R(y):1.7+(-8-y)*.2;
+const dm=y=>y<=.45?1:Math.sqrt(Math.max(0,1-Math.pow((y-.45)/.8,2)));
+const metal=c=>new T.MeshStandardMaterial({color:c,metalness:.6,roughness:.4,clippingPlanes:clip});
+const glass=(c,o)=>new T.MeshStandardMaterial({color:c,transparent:true,opacity:o,side:T.DoubleSide,depthWrite:false,clippingPlanes:clip,metalness:.2,roughness:.3});
+const capM=()=>new T.MeshBasicMaterial({color:0xf59e0b,side:T.BackSide,clippingPlanes:clip});
+function solid(fn,y0,y1,t,m,cap=true,n=60){const p=[];for(let i=0;i<=n;i++){const y=y0+(y1-y0)*i/n;p.push(new T.Vector2(fn(y)+t,y))}for(let i=n;i>=0;i--){const y=y0+(y1-y0)*i/n;p.push(new T.Vector2(fn(y),y))}p.push(p[0].clone());
+const g=new T.LatheGeometry(p,72),r=new T.Group();r.add(new T.Mesh(g,m));if(cap)r.add(new T.Mesh(g,capM()));return r}
+const lathe=(fn,y0,y1,n=50)=>{const p=[];for(let i=0;i<=n;i++){const y=y0+(y1-y0)*i/n;p.push(new T.Vector2(fn(y),y))}return new T.LatheGeometry(p,48)};
+eng.add(solid(R,-8,0,.08,metal(0x8a94a6)));
+eng.add(solid(y=>R(y)+.32,-8,0,.04,glass(0x22d3ee,.2),false));
+eng.add(solid(dm,.05,1.22,.06,metal(0x7b869b)));
+function cyl(r,h,y,m){const g=new T.CylinderGeometry(r,r,h,48),a=new T.Mesh(g,m),b=new T.Mesh(g,capM());a.position.y=b.position.y=y;eng.add(a,b)}
+cyl(1,.1,0,metal(0xb0b9c9));cyl(1,.05,.6,metal(0x7b869b));
+/* 19 inyectores coaxiales */
+const els=[[0,0]];for(let i=0;i<6;i++)els.push([.34*Math.cos(i*Math.PI/3),.34*Math.sin(i*Math.PI/3)]);for(let i=0;i<12;i++)els.push([.68*Math.cos(i*Math.PI/6+.26),.68*Math.sin(i*Math.PI/6+.26)]);
+function inst(g,m,y){const im=new T.InstancedMesh(g,m,els.length),d=new T.Object3D();els.forEach((e,i)=>{d.position.set(e[0],y,e[1]);d.updateMatrix();im.setMatrixAt(i,d.matrix)});im.frustumCulled=false;eng.add(im)}
+inst(new T.CylinderGeometry(.035,.035,1.3,10,1,true),new T.MeshStandardMaterial({color:0xa78bfa,metalness:.5,roughness:.4,side:T.DoubleSide,clippingPlanes:clip}),.57);
+inst(new T.CylinderGeometry(.075,.075,.65,12,1,true),glass(0x22d3ee,.5),.275);
+/* tanques */
+function capsule(r,h){const p=[];for(let i=0;i<=14;i++){const a=-Math.PI/2+i*Math.PI/28;p.push(new T.Vector2(r*Math.cos(a),-h/2+r*Math.sin(a)))}for(let i=0;i<=14;i++){const a=i*Math.PI/28;p.push(new T.Vector2(r*Math.cos(a),h/2+r*Math.sin(a)))}return new T.LatheGeometry(p,48)}
+function mkTank(x,yc,r,h,col,capc){const sh=new T.Mesh(capsule(r,h),glass(0xaab4c6,.16)),lg=capsule(r*.96,h),lp=new T.Plane(new T.Vector3(0,-1,0),0),cp=[plane,lp];
+const g=new T.Group();g.add(sh,new T.Mesh(lg,new T.MeshStandardMaterial({color:col,transparent:true,opacity:.6,roughness:.3,clippingPlanes:cp})),new T.Mesh(lg,new T.MeshBasicMaterial({color:capc,side:T.BackSide,clippingPlanes:cp})));g.position.set(x,yc,0);tk.add(g);return{lp,yb:yc-h/2-r,H:h+2*r}}
+const tH=mkTank(-3.6,5.9,1.25,3,0x22d3ee,0x67e8f9),tO=mkTank(3,5.3,.95,2,0xc084fc,0xd8b4fe);
+/* líneas, bombas y válvulas */
+const V=(a,b,c)=>new T.Vector3(a,b,c);
+const cO=new T.CatmullRomCurve3([V(3,3.35,0),V(3,2.4,0),V(3,1.9,0),V(2.2,1.65,0),V(.6,1.7,0),V(0,1.5,0)],false,'catmullrom',.2);
+const cH=new T.CatmullRomCurve3([V(-3.6,3.15,0),V(-3.6,2.4,0),V(-3.6,1.9,0),V(-3.3,1.3,0),V(-3.1,.6,0),V(-3.1,-7.4,0),V(-2.5,-8.1,0),V(-1.9,-8,0)],false,'catmullrom',.2);
+[cO,cH].forEach(c=>eng.add(new T.Mesh(new T.TubeGeometry(c,160,.1,10),glass(0x9aa5b8,.35))));
+function mkPump(x,col){const g=new T.Group(),m=new T.MeshStandardMaterial({color:col,clippingPlanes:clip}),a=new T.Mesh(new T.BoxGeometry(.6,.07,.07),m),b=a.clone();b.rotation.y=Math.PI/2;const rot=new T.Group();rot.add(a,b);g.add(new T.Mesh(new T.CylinderGeometry(.38,.38,.5,28),glass(0x8a94a6,.4)),rot);g.position.set(x,2.4,0);eng.add(g);return rot}
+const pH=mkPump(-3.6,0x22d3ee),pO=mkPump(3,0xc084fc);
+const vm=new T.MeshStandardMaterial({color:0xef4444,clippingPlanes:clip}),vg=new T.OctahedronGeometry(.2);
+[[-3.6,3],[3,3.05]].forEach(p=>{const m=new T.Mesh(vg,vm);m.position.set(p[0],p[1],0);eng.add(m)});
+/* brillo de combustión y pluma */
+const add=(c)=>new T.MeshBasicMaterial({color:c,transparent:true,opacity:0,side:T.DoubleSide,depthWrite:false,blending:T.AdditiveBlending,clippingPlanes:clip});
+const gl=add(0xff9a45),pl=add(0x9bb7ff);
+eng.add(new T.Mesh(lathe(y=>R(y)-.012,-8,0),gl),new T.Mesh(lathe(Rr,-12.5,-8),pl));
+const light=new T.PointLight(0xff8a3c,0,14);light.position.set(0,-2,0);eng.add(light);
+/* partículas */
+function pts(n,size,ad){const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(new Float32Array(n*3),3));g.setAttribute('color',new T.BufferAttribute(new Float32Array(n*3),3));
+const p=new T.Points(g,new T.PointsMaterial({size,vertexColors:true,transparent:true,opacity:.95,depthWrite:false,clippingPlanes:clip,blending:ad?T.AdditiveBlending:T.NormalBlending}));p.frustumCulled=false;scene.add(p);return p}
+const NH=650,NO=340,NP=1200,PH=pts(NH,.13),PO=pts(NO,.13),PP=pts(NP,.15,true);
+const Lp=cH.getLength(),Lj=10.4,Lh=1.5,LH=Lp+Lj+Lh,Lq=cO.getLength(),Lo2=1.9,LO=Lq+Lo2;
+const F=n=>new Float32Array(n),hd=F(NH).fill(-1e9),od=F(NO).fill(-1e9),py=F(NP).fill(-1e9),hth=F(NH),hel=F(NH),hj=F(NH),oel=F(NO),oj=F(NO),pr=F(NP),pth=F(NP);
+for(let i=0;i<NH;i++){hth[i]=Math.random()*6.283;hel[i]=Math.random()*19|0;hj[i]=.9+Math.random()*.2}
+for(let i=0;i<NO;i++){oel[i]=Math.random()*19|0;oj[i]=.9+Math.random()*.2}
+function hPos(d,th,e,o){let x,y,z;
+if(d<Lp){const p=cH.getPointAt(d/Lp);x=p.x;y=p.y;z=p.z}
+else if(d<Lp+Lj){const q=(d-Lp)/Lj,a=Math.PI+th*Math.min(1,q*3)+4.5*q,r=R(-8+8.3*q)+.2;y=-8+8.3*q;x=r*Math.cos(a);z=r*Math.sin(a)}
+else{const q=(d-Lp-Lj)/Lh,k=Math.min(1,q*2),a=Math.PI+th+4.5,ox=.055*Math.cos(th*7),oz=.055*Math.sin(th*7);x=1.2*Math.cos(a)*(1-k)+(els[e][0]+ox)*k;z=1.2*Math.sin(a)*(1-k)+(els[e][1]+oz)*k;y=q<.5?.3:.3-(q-.5)*1.8}
+o[0]=x;o[1]=y;o[2]=z}
+function oPos(d,e,o){if(d<Lq){const p=cO.getPointAt(d/Lq);o[0]=p.x;o[1]=p.y;o[2]=p.z}else{const q=(d-Lq)/Lo2,k=Math.min(1,q*2.2);o[0]=els[e][0]*k;o[1]=1.45-q*1.75;o[2]=els[e][1]*k}}
+const vy=y=>y>-3?1.2-y*.3:y>-4.2?2.1+(-3-y)/1.2*3:y>-8?5.1+(-4.2-y)/3.8*8:13.1+(-8-y)*.5;
+/* estado */
+const s={on:false,flow:0,fl:0,thr:1,lH:1,lO:1,t:0,rot:0,empty:false},FAR=-1e4,tmp=[0,0,0];
+function upd(dt){
+s.t+=dt;s.flow+=((s.on?1:0)-s.flow)*Math.min(1,dt*(s.on?1:2.2));if(!s.on&&s.flow<.01){s.flow=0;hd.fill(-1e9);od.fill(-1e9)}
+const ft=s.on&&s.flow>.3?1:0;s.fl+=(ft-s.fl)*Math.min(1,dt*(ft?5:3));if(!ft&&s.fl<.01)s.fl=0;
+s.rot+=dt*s.flow*(9+10*s.thr);pH.rotation.y=pO.rotation.y=s.rot;
+if(s.flow>.02){const r=s.flow*s.thr*dt/90;s.lH=Math.max(0,s.lH-r);s.lO=Math.max(0,s.lO-r);if(!s.lH||!s.lO){s.on=false;s.empty=true;$('bGo').textContent='▶ Ignición';$('bGo').classList.add('pri')}}
+tH.lp.constant=tH.yb+s.lH*tH.H;tO.lp.constant=tO.yb+s.lO*tO.H;
+vm.color.setHex(s.on?0x34d399:0xef4444);
+gl.opacity=.2*s.fl*(.5+.5*s.thr);pl.opacity=.1*s.fl;light.intensity=s.fl*2.4;
+const sp=3.3*(.45+.55*s.thr)*s.flow;
+let a=PH.geometry.attributes,P=a.position.array,C=a.color.array;
+for(let i=0;i<NH;i++){const o=i*3;let d=hd[i];if(d<-1e8){P[o+1]=FAR;continue}
+d+=sp*(d<0?1:hj[i])*dt;if(d>=LH){d=s.on?d-LH:-1e9}hd[i]=d;if(d<0){P[o+1]=FAR;continue}
+hPos(d,hth[i],hel[i],tmp);P[o]=tmp[0];P[o+1]=tmp[1];P[o+2]=tmp[2];
+let c=mx([.13,.83,.93],[1,.84,.59],cl((d-Lp)/Lj));c=mx(c,[1,.67,.31],cl((d-LH+.8)/.8));C[o]=c[0];C[o+1]=c[1];C[o+2]=c[2]}
+a.position.needsUpdate=a.color.needsUpdate=true;
+a=PO.geometry.attributes;P=a.position.array;C=a.color.array;
+for(let i=0;i<NO;i++){const o=i*3;let d=od[i];if(d<-1e8){P[o+1]=FAR;continue}
+d+=sp*(d<0?1:oj[i])*dt;if(d>=LO){d=s.on?d-LO:-1e9}od[i]=d;if(d<0){P[o+1]=FAR;continue}
+oPos(d,oel[i],tmp);P[o]=tmp[0];P[o+1]=tmp[1];P[o+2]=tmp[2];
+const c=mx([.75,.52,.99],[1,.67,.31],cl((d-LO+.6)/.6));C[o]=c[0];C[o+1]=c[1];C[o+2]=c[2]}
+a.position.needsUpdate=a.color.needsUpdate=true;
+a=PP.geometry.attributes;P=a.position.array;C=a.color.array;const vs=.8*(.55+.45*s.thr);
+for(let i=0;i<NP;i++){const o=i*3;let y=py[i];
+if(y<-1e8){if(s.fl>.02&&Math.random()<dt*2*s.fl){y=py[i]=-.2-Math.random()*.5;pr[i]=Math.sqrt(Math.random())*.9;pth[i]=Math.random()*6.283}else{P[o+1]=FAR;continue}}
+else{y-=vy(y)*dt*vs;if(y<-12.6){py[i]=-1e9;P[o+1]=FAR;continue}py[i]=y}
+const r=pr[i]*Rr(y);P[o]=r*Math.cos(pth[i]);P[o+1]=y;P[o+2]=r*Math.sin(pth[i]);
+const c=y>-3?[1,.96,.83]:y>-5.5?mx([1,.96,.83],[1,.59,.2],(-3-y)/2.5):y>-9.5?mx([1,.59,.2],[.59,.71,1],(-5.5-y)/4):[.59,.71,1],f=(y<-8?cl(1+(y+8)/4.6):1)*.9;
+C[o]=c[0]*f;C[o+1]=c[1]*f;C[o+2]=c[2]*f}
+a.position.needsUpdate=a.color.needsUpdate=true}
+function release(){for(let i=0;i<NH;i++)if(hd[i]<-1e8)hd[i]=-Math.random()*LH;for(let i=0;i<NO;i++)if(od[i]<-1e8)od[i]=-Math.random()*LO}
+/* cámara */
+let az=.55,el=.22,gd=30,dist=30,auto=true;const tgt=new T.Vector3(0,-1.5,0),gt=new T.Vector3(0,-1.5,0);
+function setAuto(v){auto=v;$('bAuto').classList.toggle('on',v)}
+const Pm=new Map();
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);Pm.set(e.pointerId,[e.clientX,e.clientY]);setAuto(false)});
+cv.addEventListener('pointermove',e=>{const o=Pm.get(e.pointerId);if(!o)return;
+if(Pm.size===1){az-=(e.clientX-o[0])*.008;el=cl(el+(e.clientY-o[1])*.008,-1.45,1.45)}
+else if(Pm.size===2){const q=[...Pm.entries()].find(k=>k[0]!==e.pointerId)[1];gd=cl(gd*Math.hypot(o[0]-q[0],o[1]-q[1])/Math.max(1,Math.hypot(e.clientX-q[0],e.clientY-q[1])),3,45)}
+Pm.set(e.pointerId,[e.clientX,e.clientY])});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,e=>Pm.delete(e.pointerId)));
+cv.addEventListener('wheel',e=>{e.preventDefault();gd=cl(gd*(1+e.deltaY*.001),3,45)},{passive:false});
+function fit(){const w=stg.clientWidth,h=stg.clientHeight;ren.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+addEventListener('resize',fit);fit();
+/* vistas */
+[['General',0,-1.5,0,30],['Tanques',0,6,0,15],['Inyectores',0,.6,0,6.5],['Cámara',0,-1.6,0,7.5],['Garganta',0,-4.2,0,6],['Tobera',0,-6.5,0,11]].forEach(v=>{const b=document.createElement('button');b.textContent=v[0];b.onclick=()=>{gt.set(v[1],v[2],v[3]);gd=v[4];setAuto(false)};$('views').appendChild(b)});
+/* corte */
+const cut={m:0,p:0,f:1},pm=new T.Mesh(new T.PlaneGeometry(1,1),new T.MeshBasicMaterial({color:0xf59e0b,transparent:true,opacity:.08,side:T.DoubleSide,depthWrite:false}));
+pm.add(new T.LineSegments(new T.EdgesGeometry(pm.geometry),new T.LineBasicMaterial({color:0xf59e0b})));pm.visible=false;scene.add(pm);
+function apply(){const m=cut.m,f=cut.f;if(!m){plane.normal.set(0,0,-1);plane.constant=1e5;pm.visible=false;return}
+pm.visible=true;if(m===1){plane.normal.set(0,0,-f);pm.position.set(0,-1.5,cut.p);pm.rotation.set(0,0,0);pm.scale.set(12,22,1)}
+else{plane.normal.set(0,-f,0);pm.position.set(0,cut.p,0);pm.rotation.set(-Math.PI/2,0,0);pm.scale.set(10,10,1)}plane.constant=f*cut.p}
+const INFO=[['Vista libre','Activa un corte de sección para ver el interior: el poste central de O₂, el anillo de H₂ de cada inyector y la camisa de enfriamiento.'],
+['Corte longitudinal','El plano pasa por el eje. Mueve el control para avanzar a través del motor. Verás los posteados de O₂ (violeta) con su anillo de H₂ (cian), la camisa por donde sube el H₂ y el estrechamiento de la garganta.'],
+['Corte transversal','El plano es horizontal: usa el control para subir y bajar. A la altura del cabezal ves los 19 elementos coaxiales; en la cámara, los gases; en la garganta, la sección mínima.']];
+function setCut(m){cut.m=m;[...$('seg').children].forEach((b,i)=>b.classList.toggle('on',i===m));const r=$('rC');
+if(m===1){r.min=-1.8;r.max=1.8;r.step=.02;r.value=cut.p=0}if(m===2){r.min=-11;r.max=9;r.step=.05;r.value=cut.p=-1.5}
+r.disabled=!m;if(m)setAuto(false);$('it').textContent=INFO[m][0];$('ix').textContent=INFO[m][1];apply()}
+[...$('seg').children].forEach((b,i)=>b.onclick=()=>setCut(i));
+$('rC').oninput=e=>{cut.p=+e.target.value;apply()};
+$('bFlip').onclick=()=>{cut.f=-cut.f;apply()};
+setCut(0);
+/* controles */
+function go(){if(s.on)s.on=false;else{if(s.lH<.02||s.lO<.02)s.lH=s.lO=1;s.empty=false;s.on=true;release()}$('bGo').textContent=s.on?'■ Apagar':'▶ Ignición';$('bGo').classList.toggle('pri',!s.on)}
+$('bGo').onclick=go;$('bAuto').onclick=()=>setAuto(!auto);
+$('bFill').onclick=()=>{s.lH=s.lO=1;s.empty=false};
+$('bTk').onclick=e=>{tk.visible=!tk.visible;e.target.classList.toggle('on',tk.visible)};
+let showL=true;$('bLb').onclick=e=>{showL=!showL;e.target.classList.toggle('on',showL)};
+$('rT').oninput=e=>{s.thr=e.target.value/100;$('oT').textContent=e.target.value+' %'};
+addEventListener('keydown',e=>{if(e.key===' '&&!/BUTTON|INPUT/.test(e.target.tagName)){e.preventDefault();go()}});
+/* etiquetas */
+const LB=[['Tanque LH₂',-3.6,9.1,0,0],['Tanque LOX',3,7.7,0,0],['Turbobomba H₂',-3.6,2.4,0,0],['Turbobomba O₂',3,2.4,0,0],['Cabezal inyector',1.2,.8,0,1],['Cámara de combustión',1.5,-1.5,0,1],['Garganta',1.1,-4.2,0,1],['Camisa de enfriamiento',2.1,-6.2,0,1],['Escape',0,-11.4,0,0]].map(l=>{const d=document.createElement('div');d.className='lb';d.textContent=l[0];$('lbs').appendChild(d);return{d,v:V(l[1],l[2],l[3]),al:l[4]}});
+const pv=new T.Vector3();
+function labels(){const w=stg.clientWidth,h=stg.clientHeight;LB.forEach(l=>{pv.copy(l.v).project(cam);const ok=showL&&pv.z<1&&Math.abs(pv.x)<1.1&&Math.abs(pv.y)<1.1;l.d.style.display=ok?'':'none';if(ok)l.d.style.transform=`translate(${(pv.x*.5+.5)*w}px,${(-pv.y*.5+.5)*h}px) translate(${l.al?'6px':'-50%'},-50%)`})}
+function kpi(){const f=s.fl,m=500*s.thr*s.flow;$('kS').textContent=s.empty&&!s.on?'Tanque vacío':s.on?(s.flow<.9?'Arranque':'Régimen'):(s.flow>.02?'Apagando':'Apagado');
+$('kF').textContent=nf(f*m*452*9.81/1000);$('kP').textContent=nf(20.6*s.thr*s.flow*f,1);$('kT').textContent=f>.3?'3 450':'—'}
+let last=performance.now(),fr=0;
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;upd(dt);
+if(auto)az+=dt*.15;tgt.lerp(gt,.1);dist+=(gd-dist)*.1;
+cam.position.set(tgt.x+dist*Math.cos(el)*Math.sin(az),tgt.y+dist*Math.sin(el),tgt.z+dist*Math.cos(el)*Math.cos(az));cam.lookAt(tgt);
+ren.render(scene,cam);labels();if(++fr%6===0)kpi();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html
