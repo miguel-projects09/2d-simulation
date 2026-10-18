@@ -6,7 +6,7 @@ The displayed engine values and behavior are illustrative, not an engineering mo
 
 ## Publicar en GitHub Pages
 
-El flujo de GitHub Actions habilita Pages y publica el simulador cuando se ejecuta en `main`. Integra estos cambios en `main` y, si fuera necesario, selecciona **GitHub Actions** en **Settings → Pages**. Cuando termine **Deploy GitHub Pages**, el sitio estará disponible en:
+Antes de publicar por primera vez, un administrador del repositorio debe habilitar Pages manualmente: abre **Settings → Pages** y, en **Build and deployment**, selecciona **GitHub Actions** como origen. El flujo publica el simulador al ejecutarse en `main`; no intenta cambiar la configuración de Pages ni necesita permisos de administrador. Cuando termine **Deploy GitHub Pages**, el sitio estará disponible en:
 
 https://miguel-projects09.github.io/2d-simulation/
 
